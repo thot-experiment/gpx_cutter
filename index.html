@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPX Cutter</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="drop-zone">
+        <h1>GPX Cutter</h1>
+        <p>Drag and drop your GPX file here</p>
+        <input type="file" id="file-input" accept=".gpx" style="display: none;">
+        <button id="select-button">Select File</button>
+    </div>
+
+    <div id="app" style="display: none;">
+        <div id="tooltip" class="tooltip"></div>
+        <div class="canvas-container">
+            <canvas id="path-canvas"></canvas>
+        </div>
+        <div class="graph-container">
+            <div class="graph-controls">
+                <select id="graph-metric">
+                    <option value="speed">Speed</option>
+                    <option value="elevation">Elevation</option>
+                </select>
+                <select id="graph-x-axis">
+                    <option value="time">Time</option>
+                    <option value="distance">Distance</option>
+                </select>
+                <button id="download-button" disabled>Download Selected Section</button>
+            </div>
+            <canvas id="graph-canvas"></canvas>
+        </div>
+    </div>
+
+    <script type="module" src="script.mjs"></script>
+</body>
+</html>

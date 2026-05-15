@@ -1,0 +1,106 @@
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #121212;
+    color: #eee;
+}
+
+#drop-zone {
+    width: 80%;
+    max-width: 600px;
+    height: 300px;
+    border: 3px dashed #444;
+    border-radius: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    margin: 50px 0;
+    transition: border-color 0.3s;
+    background: #1e1e1e;
+    color: #eee;
+}
+
+#drop-zone.drag-over {
+    border-color: #007bff;
+    background: #252a33;
+}
+
+#app {
+    width: 95%;
+    max-width: 1200px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding-bottom: 50px;
+}
+
+.canvas-container, .graph-container {
+    background: #222;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: white;
+}
+
+canvas {
+    width: 100%;
+    max-height: 500px;
+    border: 1px solid #444;
+    background: #1a1a1a;
+}
+
+.graph-controls {
+    margin-bottom: 15px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    color: white;
+}
+
+button {
+    padding: 10px 20px;
+    cursor: pointer;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-weight: bold;
+}
+
+button:disabled {
+    background: #444;
+    color: #888;
+    cursor: not-allowed;
+}
+
+select {
+    padding: 10px;
+    border-radius: 5px;
+    background: #333;
+    color: white;
+    border: 1px solid #555;
+}
+
+.tooltip {
+    position: fixed;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
+    display: none;
+    z-index: 1000;
+    border: 1px solid #555;
+    white-space: pre-line;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+}
+
+
