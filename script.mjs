@@ -10,6 +10,8 @@ const graphXAxis = document.getElementById('graph-x-axis');
 const downloadButton = document.getElementById('download-button');
 
 let gpxData = null;
+let worldData = null;
+let mapCacheCanvas = null;
 let originalContent = '';
 let points = [];
 let selection = null; // {start: index, end: index}
@@ -37,11 +39,30 @@ async function handleFile(file) {
     const text = await file.text();
     originalContent = text;
     parseGPX(text);
+    mapCacheCanvas = null; // Reset cache for new projection
     dropZone.style.display = 'none';
     app.style.display = 'flex';
     renderPath();
     renderGraph();
 }
+
+async function loadWorldData() {
+    try {
+        const response = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-10m.json');
+        worldData = await response.json();
+    } catch (e) {
+        console.error('Failed to load world map data:', e);
+        // Fallback to 110m if 10m fails
+        try {
+            const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+            worldData = await res.json();
+        } catch (err) {
+            console.error('Fallback failed:', err);
+        }
+    }
+}
+
+loadWorldData();
 
 function parseGPX(text) {
     const parser = new DOMParser();
@@ -125,6 +146,43 @@ function updateTooltip(e) {
     tooltip.style.top = (e.clientY + 15) + 'px';
 }
 
+function renderMapToCache(drawWidth, drawHeight, minLon, maxLon, minLat, maxLat, deltaLon, deltaLat, offsetX, offsetY, plotWidth, plotHeight) {
+    const cache = document.createElement('canvas');
+    cache.width = drawWidth * 2;
+    cache.height = drawHeight * 2;
+    const ctx = cache.getContext('2d');
+    ctx.scale(2, 2);
+
+    if (worldData) {
+        ctx.strokeStyle = 'rgba(150, 150, 150, 0.6)';
+        ctx.lineWidth = 0.5;
+        try {
+            const countries = topojson.feature(worldData, worldData.objects.countries);
+            countries.features.forEach(feature => {
+                const { coordinates, type } = feature.geometry;
+                const drawPoly = (poly) => {
+                    poly.forEach(ring => {
+                        ctx.beginPath();
+                        ring.forEach((coord, i) => {
+                            const x = ((coord[0] - minLon) / deltaLon) * plotWidth + offsetX;
+                            const y = drawHeight - (((coord[1] - minLat) / deltaLat) * plotHeight + offsetY);
+                            if (i === 0) ctx.moveTo(x, y);
+                            else ctx.lineTo(x, y);
+                        });
+                        ctx.stroke();
+                    });
+                };
+                if (type === 'Polygon') drawPoly(coordinates);
+                else if (type === 'MultiPolygon') coordinates.forEach(drawPoly);
+            });
+        } catch (e) {
+            console.error('Error rendering map cache:', e);
+        }
+    }
+
+    return cache;
+}
+
 function renderPath() {
     const ctx = pathCanvas.getContext('2d');
     const width = pathCanvas.width = pathCanvas.offsetWidth * 2;
@@ -138,8 +196,8 @@ function renderPath() {
     const minLat = Math.min(...lats), maxLat = Math.max(...lats);
     const minLon = Math.min(...lons), maxLon = Math.max(...lons);
 
-    const deltaLat = maxLat - minLat;
-    const deltaLon = maxLon - minLon;
+    const deltaLat = Math.max(maxLat - minLat, 0.001);
+    const deltaLon = Math.max(maxLon - minLon, 0.001);
     const avgLat = (maxLat + minLat) / 2 * Math.PI / 180;
     const aspect = (deltaLon * Math.cos(avgLat)) / deltaLat;
 
@@ -154,6 +212,13 @@ function renderPath() {
 
     const offsetX = (drawWidth - plotWidth) / 2;
     const offsetY = (drawHeight - plotHeight) / 2;
+
+    if (worldData) {
+        if (!mapCacheCanvas) {
+            mapCacheCanvas = renderMapToCache(drawWidth, drawHeight, minLon, maxLon, minLat, maxLat, deltaLon, deltaLat, offsetX, offsetY, plotWidth, plotHeight);
+        }
+        ctx.drawImage(mapCacheCanvas, 0, 0, drawWidth, drawHeight);
+    }
 
     ctx.lineWidth = 2;
 
@@ -312,8 +377,8 @@ pathCanvas.onmousemove = (e) => {
     const lons = points.map(p => p.lon);
     const minLat = Math.min(...lats), maxLat = Math.max(...lats);
     const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-    const deltaLat = maxLat - minLat;
-    const deltaLon = maxLon - minLon;
+    const deltaLat = Math.max(maxLat - minLat, 0.001);
+    const deltaLon = Math.max(maxLon - minLon, 0.001);
     const avgLat = (maxLat + minLat) / 2 * Math.PI / 180;
     const aspect = (deltaLon * Math.cos(avgLat)) / deltaLat;
 
