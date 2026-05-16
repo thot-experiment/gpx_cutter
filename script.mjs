@@ -7,7 +7,19 @@ const pathCanvas = document.getElementById('path-canvas');
 const graphCanvas = document.getElementById('graph-canvas');
 const graphMetric = document.getElementById('graph-metric');
 const graphXAxis = document.getElementById('graph-x-axis');
+const unitToggle = document.getElementById('unit-toggle');
+const loadExtraDataButton = document.getElementById('load-extra-data');
 const downloadButton = document.getElementById('download-button');
+
+const THEME = {
+    ocean: '#1a2a3a',
+    land: '#2d3d2d',
+    urban: '#606060',
+    border: 'rgba(150, 150, 150, 0.5)',
+    selection: 'rgba(0, 123, 255, 0.3)',
+    highlight: 'white',
+    highlightBorder: 'black'
+};
 
 let gpxData = null;
 let worldData = null;
@@ -49,30 +61,39 @@ async function handleFile(file) {
     renderGraph();
 }
 
-async function loadWorldData() {
+async function loadWorldData(extra = false) {
     try {
-        const [countriesRes, urbanRes, riversRes, lakesRes] = await Promise.all([
-            fetch('https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/10m/cultural/ne_10m_admin_0_countries.json'),
-            fetch('https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/10m/cultural/ne_10m_urban_areas.json'),
-            fetch('https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/10m/physical/ne_10m_rivers_lake_centerlines.json'),
-            fetch('https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/10m/physical/ne_10m_lakes.json')
-        ]);
-        worldData = await countriesRes.json();
-        urbanData = await urbanRes.json();
-        riversData = await riversRes.json();
-        lakesData = await lakesRes.json();
+        if (extra) {
+            const [countriesRes, urbanRes, riversRes, lakesRes] = await Promise.all([
+                fetch('https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/10m/cultural/ne_10m_admin_0_countries.json'),
+                fetch('https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/10m/cultural/ne_10m_urban_areas.json'),
+                fetch('https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/10m/physical/ne_10m_rivers_lake_centerlines.json'),
+                fetch('https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/10m/physical/ne_10m_lakes.json')
+            ]);
+            worldData = await countriesRes.json();
+            urbanData = await urbanRes.json();
+            riversData = await riversRes.json();
+            lakesData = await lakesRes.json();
+        } else {
+            const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-10m.json');
+            worldData = await res.json();
+            urbanData = null;
+            riversData = null;
+            lakesData = null;
+        }
     } catch (e) {
         console.error('Failed to load map data:', e);
-        try {
-            const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
-            worldData = await res.json();
-        } catch (err) {
-            console.error('Fallback failed:', err);
-        }
     }
 }
 
 loadWorldData();
+
+loadExtraDataButton.onclick = async () => {
+    loadExtraDataButton.disabled = true;
+    await loadWorldData(true);
+    mapCacheCanvas = null;
+    renderPath();
+};
 
 function parseGPX(text) {
     const parser = new DOMParser();
@@ -146,11 +167,27 @@ function updateTooltip(e) {
         return;
     }
     const p = points[hoveredIndex];
-    const speedKph = (p.speed * 3.6).toFixed(1);
-    const distKm = (p.dist / 1000).toFixed(2);
-    const eleM = p.ele.toFixed(1);
+    const isImperial = unitToggle.checked;
     
-    tooltip.innerHTML = `Speed: ${speedKph} km/h\nDistance: ${distKm} km\nElevation: ${eleM} m`;
+    let speed, dist, ele, sUnit, dUnit, eUnit;
+    
+    if (isImperial) {
+        speed = (p.speed * 2.23694).toFixed(1);
+        dist = (p.dist * 0.000621371).toFixed(2);
+        ele = (p.ele * 3.28084).toFixed(1);
+        sUnit = 'mph';
+        dUnit = 'mi';
+        eUnit = 'ft';
+    } else {
+        speed = (p.speed * 3.6).toFixed(1);
+        dist = (p.dist / 1000).toFixed(2);
+        ele = p.ele.toFixed(1);
+        sUnit = 'km/h';
+        dUnit = 'km';
+        eUnit = 'm';
+    }
+    
+    tooltip.innerHTML = `Speed: ${speed} ${sUnit}\nDistance: ${dist} ${dUnit}\nElevation: ${ele} ${eUnit}`;
     tooltip.style.display = 'block';
     tooltip.style.left = (e.clientX + 15) + 'px';
     tooltip.style.top = (e.clientY + 15) + 'px';
@@ -164,7 +201,7 @@ function renderMapToCache(drawWidth, drawHeight, minLon, maxLon, minLat, maxLat,
     ctx.scale(2, 2);
 
     // 1. Background (Ocean)
-    ctx.fillStyle = '#1a2a3a';
+    ctx.fillStyle = THEME.ocean;
     ctx.fillRect(0, 0, drawWidth, drawHeight);
 
     const project = (coord) => {
@@ -190,8 +227,11 @@ function renderMapToCache(drawWidth, drawHeight, minLon, maxLon, minLat, maxLat,
     };
 
     const drawGeoJSON = (data, color, isPolygon = true, isFill = true) => {
-        if (!data || !data.features) return;
-        data.features.forEach(feature => {
+        if (!data) return;
+        const features = data.features || (Array.isArray(data) ? data : null);
+        if (!features) return;
+
+        features.forEach(feature => {
             if (!feature || !feature.geometry) return;
             const { coordinates, type } = feature.geometry;
             if (!coordinates) return;
@@ -229,22 +269,22 @@ function renderMapToCache(drawWidth, drawHeight, minLon, maxLon, minLat, maxLat,
         if (worldData.objects) {
             // Handle TopoJSON (fallback)
             const land = topojson.feature(worldData, worldData.objects.land || worldData.objects.countries);
-            drawGeoJSON(land, '#2d3d2d');
+            drawGeoJSON(land, THEME.land);
         } else if (worldData.features) {
             // Handle GeoJSON (new source)
-            drawGeoJSON(worldData, '#2d3d2d');
+            drawGeoJSON(worldData, THEME.land);
         }
     }
 
     // 3. Lakes (Cut out of land)
-    drawGeoJSON(lakesData, '#1a2a3a');
+    drawGeoJSON(lakesData, THEME.ocean);
 
     // 4. Rivers (Cut out of land)
-    ctx.lineWidth = 0.5;
-    drawGeoJSON(riversData, '#1a2a3a', false, false);
+    ctx.lineWidth = 0.8;
+    drawGeoJSON(riversData, THEME.ocean, false, false);
 
     // 5. Urban Areas
-    drawGeoJSON(urbanData, '#a0a0a0');
+    drawGeoJSON(urbanData, THEME.urban);
 
     // 6. Borders
     if (worldData) {
@@ -254,9 +294,9 @@ function renderMapToCache(drawWidth, drawHeight, minLon, maxLon, minLat, maxLat,
         } else {
             countries = worldData;
         }
-        ctx.strokeStyle = 'rgba(150, 150, 150, 0.5)';
+        ctx.strokeStyle = THEME.border;
         ctx.lineWidth = 0.3;
-        drawGeoJSON(countries, 'rgba(150, 150, 150, 0.5)', true, false);
+        drawGeoJSON(countries, THEME.border, true, false);
     }
 
     return cache;
@@ -266,7 +306,7 @@ function renderPath() {
     const ctx = pathCanvas.getContext('2d');
     const width = pathCanvas.width = pathCanvas.offsetWidth * 2;
     const height = pathCanvas.height = 500 * 2;
-    ctx.scale(2, 2);
+    
     const drawWidth = width / 2;
     const drawHeight = height / 2;
 
@@ -292,12 +332,15 @@ function renderPath() {
     const offsetX = (drawWidth - plotWidth) / 2;
     const offsetY = (drawHeight - plotHeight) / 2;
 
-    if (worldData) {
+    // Use cached map background - Draw BEFORE scaling
+    if (worldData || citiesData) {
         if (!mapCacheCanvas) {
             mapCacheCanvas = renderMapToCache(drawWidth, drawHeight, minLon, maxLon, minLat, maxLat, deltaLon, deltaLat, offsetX, offsetY, plotWidth, plotHeight);
         }
-        ctx.drawImage(mapCacheCanvas, 0, 0, drawWidth, drawHeight);
+        ctx.drawImage(mapCacheCanvas, 0, 0);
     }
+
+    ctx.scale(2, 2);
 
     ctx.lineWidth = 2;
 
@@ -320,13 +363,14 @@ function renderPath() {
         const x = ((p.lon - minLon) / deltaLon) * plotWidth + offsetX;
         const y = drawHeight - (((p.lat - minLat) / deltaLat) * plotHeight + offsetY);
         ctx.beginPath();
-        ctx.fillStyle = 'white';
+        ctx.fillStyle = THEME.highlight;
         ctx.arc(x, y, 4, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = 'black';
+        ctx.strokeStyle = THEME.highlightBorder;
         ctx.stroke();
     }
 }
+
 
 function renderGraph() {
     const ctx = graphCanvas.getContext('2d');
@@ -372,7 +416,7 @@ function renderGraph() {
     }
 
     if (selection) {
-        ctx.fillStyle = 'rgba(0, 123, 255, 0.3)';
+        ctx.fillStyle = THEME.selection;
         const startX = ((xValues[selection.start] - minX) / (maxX - minX)) * (drawWidth - 40) + 20;
         const endX = ((xValues[selection.end] - minX) / (maxX - minX)) * (drawWidth - 40) + 20;
         ctx.fillRect(startX, 0, endX - startX, drawHeight);
@@ -383,7 +427,7 @@ function renderGraph() {
         const valX = xAxis === 'time' ? (p.time || 0) : p.dist;
         const x = ((valX - minX) / (maxX - minX)) * (drawWidth - 40) + 20;
         ctx.beginPath();
-        ctx.strokeStyle = 'white';
+        ctx.strokeStyle = THEME.highlight;
         ctx.moveTo(x, 0);
         ctx.lineTo(x, drawHeight);
         ctx.stroke();

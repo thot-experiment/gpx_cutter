@@ -57,11 +57,16 @@ canvas {
 }
 
 .graph-controls {
-    margin-bottom: 15px;
     display: flex;
     gap: 10px;
     align-items: center;
-    color: white;
+    margin-bottom: 10px;
+}
+
+.unit-toggle {
+    font-size: 14px;
+    cursor: pointer;
+    user-select: none;
 }
 
 button {

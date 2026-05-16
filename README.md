@@ -2,6 +2,8 @@
 
 [Use Now](https://thot-experiment.github.io/gpx_cutter/)
 
+The impetus behind this project is that I sometimes leave my tracker on after a ride once I'm on the train and I wanted an easy way to slice the data. The whole thing was written by Gemma 4 31B Q6 running inside opencode with Q8 256k context.
+
 GPX Cutter is a simple, browser-based tool that allows you to visualize a GPX track and extract a specific section of it. It is designed to help you remove irrelevant parts of a GPS log (like the commute to and from a trail) while keeping the relevant activity.
 
 ## Features
