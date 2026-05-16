@@ -11,6 +11,9 @@ const downloadButton = document.getElementById('download-button');
 
 let gpxData = null;
 let worldData = null;
+let urbanData = null;
+let riversData = null;
+let lakesData = null;
 let mapCacheCanvas = null;
 let originalContent = '';
 let points = [];
@@ -48,11 +51,18 @@ async function handleFile(file) {
 
 async function loadWorldData() {
     try {
-        const response = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-10m.json');
-        worldData = await response.json();
+        const [countriesRes, urbanRes, riversRes, lakesRes] = await Promise.all([
+            fetch('https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/10m/cultural/ne_10m_admin_0_countries.json'),
+            fetch('https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/10m/cultural/ne_10m_urban_areas.json'),
+            fetch('https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/10m/physical/ne_10m_rivers_lake_centerlines.json'),
+            fetch('https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/10m/physical/ne_10m_lakes.json')
+        ]);
+        worldData = await countriesRes.json();
+        urbanData = await urbanRes.json();
+        riversData = await riversRes.json();
+        lakesData = await lakesRes.json();
     } catch (e) {
-        console.error('Failed to load world map data:', e);
-        // Fallback to 110m if 10m fails
+        console.error('Failed to load map data:', e);
         try {
             const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
             worldData = await res.json();
@@ -153,31 +163,100 @@ function renderMapToCache(drawWidth, drawHeight, minLon, maxLon, minLat, maxLat,
     const ctx = cache.getContext('2d');
     ctx.scale(2, 2);
 
-    if (worldData) {
-        ctx.strokeStyle = 'rgba(150, 150, 150, 0.6)';
-        ctx.lineWidth = 0.5;
-        try {
-            const countries = topojson.feature(worldData, worldData.objects.countries);
-            countries.features.forEach(feature => {
-                const { coordinates, type } = feature.geometry;
-                const drawPoly = (poly) => {
-                    poly.forEach(ring => {
-                        ctx.beginPath();
-                        ring.forEach((coord, i) => {
-                            const x = ((coord[0] - minLon) / deltaLon) * plotWidth + offsetX;
-                            const y = drawHeight - (((coord[1] - minLat) / deltaLat) * plotHeight + offsetY);
-                            if (i === 0) ctx.moveTo(x, y);
-                            else ctx.lineTo(x, y);
-                        });
-                        ctx.stroke();
-                    });
-                };
-                if (type === 'Polygon') drawPoly(coordinates);
-                else if (type === 'MultiPolygon') coordinates.forEach(drawPoly);
+    // 1. Background (Ocean)
+    ctx.fillStyle = '#1a2a3a';
+    ctx.fillRect(0, 0, drawWidth, drawHeight);
+
+    const project = (coord) => {
+        const x = ((coord[0] - minLon) / deltaLon) * plotWidth + offsetX;
+        const y = drawHeight - (((coord[1] - minLat) / deltaLat) * plotHeight + offsetY);
+        return [x, y];
+    };
+
+    const drawPoly = (poly, color, isFill = true) => {
+        if (isFill) ctx.fillStyle = color;
+        else ctx.strokeStyle = color;
+        
+        poly.forEach(ring => {
+            ctx.beginPath();
+            ring.forEach((coord, i) => {
+                const [x, y] = project(coord);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
             });
-        } catch (e) {
-            console.error('Error rendering map cache:', e);
+            if (isFill) ctx.fill();
+            else ctx.stroke();
+        });
+    };
+
+    const drawGeoJSON = (data, color, isPolygon = true, isFill = true) => {
+        if (!data || !data.features) return;
+        data.features.forEach(feature => {
+            if (!feature || !feature.geometry) return;
+            const { coordinates, type } = feature.geometry;
+            if (!coordinates) return;
+
+            if (type === 'Polygon') {
+                drawPoly(coordinates, color, isFill);
+            } else if (type === 'MultiPolygon') {
+                coordinates.forEach(poly => drawPoly(poly, color, isFill));
+            } else if (type === 'LineString' && !isPolygon) {
+                ctx.beginPath();
+                ctx.strokeStyle = color;
+                coordinates.forEach((coord, i) => {
+                    const [x, y] = project(coord);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            } else if (type === 'MultiLineString' && !isPolygon) {
+                coordinates.forEach(line => {
+                    ctx.beginPath();
+                    ctx.strokeStyle = color;
+                    line.forEach((coord, i) => {
+                        const [x, y] = project(coord);
+                        if (i === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    });
+                    ctx.stroke();
+                });
+            }
+        });
+    };
+
+    // 2. Land
+    if (worldData) {
+        if (worldData.objects) {
+            // Handle TopoJSON (fallback)
+            const land = topojson.feature(worldData, worldData.objects.land || worldData.objects.countries);
+            drawGeoJSON(land, '#2d3d2d');
+        } else if (worldData.features) {
+            // Handle GeoJSON (new source)
+            drawGeoJSON(worldData, '#2d3d2d');
         }
+    }
+
+    // 3. Lakes (Cut out of land)
+    drawGeoJSON(lakesData, '#1a2a3a');
+
+    // 4. Rivers (Cut out of land)
+    ctx.lineWidth = 0.5;
+    drawGeoJSON(riversData, '#1a2a3a', false, false);
+
+    // 5. Urban Areas
+    drawGeoJSON(urbanData, '#a0a0a0');
+
+    // 6. Borders
+    if (worldData) {
+        let countries;
+        if (worldData.objects) {
+            countries = topojson.feature(worldData, worldData.objects.countries);
+        } else {
+            countries = worldData;
+        }
+        ctx.strokeStyle = 'rgba(150, 150, 150, 0.5)';
+        ctx.lineWidth = 0.3;
+        drawGeoJSON(countries, 'rgba(150, 150, 150, 0.5)', true, false);
     }
 
     return cache;
