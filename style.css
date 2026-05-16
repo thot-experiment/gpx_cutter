@@ -69,6 +69,44 @@ canvas {
     user-select: none;
 }
 
+.stats-panel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 20px;
+    background: #2a2a2a;
+    color: #eee;
+    font-family: monospace;
+    border-radius: 8px;
+    margin-top: 20px;
+    justify-content: space-between;
+}
+
+.stats-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+    min-width: 200px;
+}
+
+.stats-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid #444;
+    padding-bottom: 4px;
+}
+
+.stats-label {
+    color: #aaa;
+}
+
+.stats-value {
+    font-weight: bold;
+    text-align: right;
+}
+
 button {
     padding: 10px 20px;
     cursor: pointer;
